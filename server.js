@@ -4,8 +4,6 @@
 import express from 'express';
 import crypto from 'node:crypto';
 import { Readable } from 'node:stream';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { Innertube, UniversalCache, Constants } from 'youtubei.js';
 import { mapItems, mapShelf, mapHeader, mapCard, nodeType } from './normalize.js';
 
@@ -81,14 +79,7 @@ const h = (fn) => async (req, res) => {
 const isVideoId = (v) => /^[\w-]{11}$/.test(v ?? '');
 
 // ---------- Herkese açık ----------
-// PWA (public/ klasörü) aynı sunucudan yayınlanır: CORS yok, tek adres. İçinde gizli bir şey yok;
-// API anahtarını sen uygulamadaki Ayarlar'a girersin, o da sadece telefonunda (localStorage) durur.
-const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
-app.use(express.static(publicDir, {
-  setHeaders(res, file) {
-    if (/sw\.js$|index\.html$|\.webmanifest$/.test(file)) res.set('Cache-Control', 'no-cache');
-  }
-}));
+app.get('/', (_req, res) => res.json({ name: 'manify-backend', ok: true }));
 app.get('/health', (_req, res) => res.send('ok')); // Render health check (YouTube'a dokunmaz)
 
 // ---------- Gezinme / arama ----------

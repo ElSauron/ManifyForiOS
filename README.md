@@ -1,13 +1,6 @@
-# Manify (kişisel kullanım)
+# Manify backend (kişisel kullanım)
 
-youtubei.js (InnerTube) + Express backend ve aynı sunucudan yayınlanan iOS PWA (`public/`).
-Arama/gezinme JSON döner, ses `/stream/:id` üzerinden proxy'lenir.
-
-## iPhone'a kurulum (PWA)
-1. Safari'de servis adresini aç (örn. https://manifybackend.onrender.com).
-2. Ayarlar sekmesine `API_KEY` değerini yapıştır → Kaydet → "Bağlantıyı test et".
-3. Paylaş → Ana Ekrana Ekle. Uygulamayı oradan aç (tam ekran, kilit ekranı kontrolleri).
-
+youtubei.js (InnerTube) + Express. Arama/gezinme JSON döner, ses `/stream/:id` üzerinden proxy'lenir.
 
 ## Render'a kurulum
 1. Dosyaları bir GitHub reposuna at (node_modules'u commit'leme; .gitignore'a `node_modules` yaz).

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0b0b10">
+  <meta name="color-scheme" content="dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Manify">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+  <title>Manify</title>
+</head>
+<body>
+  <div id="app">
+    <main id="view"></main>
+
+    <div id="mini" hidden>
+      <img id="mini-art" alt="">
+      <div class="mini-meta"><div id="mini-title" class="t"></div><div id="mini-artist" class="s"></div></div>
+      <button id="mini-play" class="ibtn" aria-label="Çal/Duraklat"></button>
+      <button id="mini-next" class="ibtn" aria-label="Sonraki"></button>
+      <div id="mini-bar"><i></i></div>
+    </div>
+
+    <nav id="tabs">
+      <button data-tab="home"><span></span><small>Ana Sayfa</small></button>
+      <button data-tab="search"><span></span><small>Ara</small></button>
+      <button data-tab="library"><span></span><small>Kitaplık</small></button>
+      <button data-tab="settings"><span></span><small>Ayarlar</small></button>
+    </nav>
+
+    <section id="player" aria-hidden="true">
+      <header>
+        <button id="p-close" class="ibtn" aria-label="Küçült"></button>
+        <div class="p-head">ŞU AN ÇALIYOR</div>
+        <button id="p-more" class="ibtn" aria-label="Seçenekler"></button>
+      </header>
+      <div id="p-stage">
+        <div id="p-art-wrap"><img id="p-art" alt=""></div>
+        <div id="p-lyrics" hidden></div>
+        <div id="p-queue" hidden></div>
+      </div>
+      <div class="p-info">
+        <div class="p-titles"><div id="p-title"></div><div id="p-artist"></div></div>
+        <button id="p-fav" class="ibtn" aria-label="Favori"></button>
+      </div>
+      <div class="p-seek">
+        <input id="p-range" type="range" min="0" max="1000" value="0" step="1" aria-label="Konum">
+        <div class="p-times"><span id="p-cur">0:00</span><span id="p-dur">0:00</span></div>
+      </div>
+      <div class="p-ctrl">
+        <button id="p-shuffle" class="ibtn" aria-label="Karıştır"></button>
+        <button id="p-prev" class="ibtn big" aria-label="Önceki"></button>
+        <button id="p-play" class="play" aria-label="Çal/Duraklat"></button>
+        <button id="p-next" class="ibtn big" aria-label="Sonraki"></button>
+        <button id="p-repeat" class="ibtn" aria-label="Tekrar"></button>
+      </div>
+      <div class="p-sub">
+        <button id="p-lyr-btn" class="chip">Sözler</button>
+        <button id="p-q-btn" class="chip">Kuyruk</button>
+      </div>
+    </section>
+
+    <div id="sheet-back" hidden></div>
+    <div id="sheet" hidden></div>
+    <div id="toast" hidden></div>
+  </div>
+  <audio id="audio" preload="auto" playsinline></audio>
+  <script src="app.js"></script>
+</body>
+</html>
