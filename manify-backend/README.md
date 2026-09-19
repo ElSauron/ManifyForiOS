@@ -23,6 +23,11 @@ curl "https://SERVIS.onrender.com/api/diag"   # API_KEY tanımlıysa sonuna ?key
 - `PO_TOKEN` + `VISITOR_DATA` ekle (birbiriyle eşleşmeli), ve/veya
 - `PLAYER_CLIENTS` sırasını değiştir (örn. `IOS,ANDROID_VR,TV_EMBEDDED`).
 
+## IP engeli olursa
+Render gibi datacenter IP'leri YouTube tarafından sık sık engellenir (`LOGIN_REQUIRED: Sign in to confirm you're not a bot`). Çözümler:
+- Aynı klasörü evdeki bir Raspberry Pi / bilgisayarda çalıştır (`npm install && node server.js`) ve `cloudflared tunnel --url http://localhost:3000` ile dışarı aç. Ev IP'si genelde engellenmez. (Hızlı tünel adresi her başlatmada değişir; kalıcı adres için Cloudflare'de adlandırılmış tünel gerekir.)
+- Ya da `YT_COOKIE` / `PO_TOKEN` + `VISITOR_DATA` ekle.
+
 ## Endpoint'ler (API_KEY tanımlıysa `?key=` veya `x-api-key` header'ı ister)
 | Yol | Açıklama |
 |---|---|

@@ -228,20 +228,31 @@ app.get('/api/lrclib', auth, h(async (req, res) => {
 const urlCache = new Map();
 const cacheKey = (id, client, fmt) => `${id}:${client}:${fmt}`;
 
+const withTimeout = (p, ms, label) => {
+  let timer;
+  const t = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error(`${label}: ${ms / 1000} sn içinde cevap gelmedi`)), ms); });
+  return Promise.race([p, t]).finally(() => clearTimeout(timer));
+};
+
 async function resolveAudio(id, client, fmt) {
   const key = cacheKey(id, client, fmt);
   const hit = urlCache.get(key);
   if (hit && hit.exp > Date.now()) return hit;
 
   const yt = await getYT();
-  const opts = { client, type: 'audio', quality: 'best' };
-  if (fmt === 'mp4') opts.format = 'mp4'; // iOS Safari AAC/mp4 ister, webm/opus çalmaz
-  const format = await yt.getStreamingData(id, opts);
-  if (!format?.url) throw new Error('Format URL yok');
+  const info = await yt.getBasicInfo(id, { client });
+  const ps = info.playability_status;
+  if (ps && ps.status !== 'OK') throw new Error(`${ps.status}${ps.reason ? ': ' + ps.reason : ''}`);
 
-  const expire = Number(new URL(format.url).searchParams.get('expire')) * 1000;
+  const opts = { type: 'audio', quality: 'best' };
+  if (fmt === 'mp4') opts.format = 'mp4'; // iOS Safari AAC/mp4 ister, webm/opus çalmaz
+  const format = info.chooseFormat(opts);
+  const url = await format.decipher(yt.session.player);
+  if (!url) throw new Error('Format URL yok');
+
+  const expire = Number(new URL(url).searchParams.get('expire')) * 1000;
   const exp = Math.min(Date.now() + 30 * 60 * 1000, Number.isFinite(expire) && expire > 0 ? expire - 60_000 : Infinity);
-  const entry = { url: format.url, mime: (format.mime_type || 'audio/mp4').split(';')[0], exp };
+  const entry = { url, mime: (format.mime_type || 'audio/mp4').split(';')[0], exp };
   urlCache.set(key, entry);
   if (urlCache.size > 500) urlCache.delete(urlCache.keys().next().value);
   return entry;
@@ -263,6 +274,30 @@ function upstreamHeaders(client, range) {
   return headers;
 }
 
+// googlevideo'dan istek at; header'lar ve İLK VERİ süre içinde gelmezse hata fırlat.
+// (Sessizce takılan istekler yerine hangi client'ın neden başarısız olduğunu görelim.)
+async function openUpstream(entry, client, range, outerSignal) {
+  const ac = new AbortController();
+  const signal = outerSignal ? AbortSignal.any([outerSignal, ac.signal]) : ac.signal;
+  const timer = setTimeout(() => ac.abort(), 12_000);
+  try {
+    const up = await fetch(entry.url, { headers: upstreamHeaders(client, range), signal, redirect: 'follow' });
+    if (!up.ok) {
+      await up.body?.cancel().catch(() => {});
+      throw new Error(`HTTP ${up.status}`);
+    }
+    const reader = up.body.getReader();
+    const first = await reader.read(); // ilk parça gelene kadar timer çalışmaya devam eder
+    if (first.done || !first.value?.length) throw new Error('boş yanıt');
+    return { up, reader, first: first.value };
+  } catch (e) {
+    if (ac.signal.aborted && !outerSignal?.aborted) throw new Error('12 sn içinde veri gelmedi (takıldı)');
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 app.get('/stream/:id', auth, async (req, res) => {
   const id = req.params.id;
   if (!isVideoId(id)) return res.status(400).json({ error: 'Geçersiz videoId' });
@@ -274,20 +309,10 @@ app.get('/stream/:id', auth, async (req, res) => {
   res.on('close', () => ac.abort()); // kullanıcı şarkıyı geçince upstream'i kes
 
   for (const client of CLIENTS) {
+    if (ac.signal.aborted) return;
     try {
-      const entry = await resolveAudio(id, client, fmt);
-      const up = await fetch(entry.url, {
-        headers: upstreamHeaders(client, range),
-        signal: ac.signal,
-        redirect: 'follow'
-      });
-
-      if (!up.ok) {
-        urlCache.delete(cacheKey(id, client, fmt));
-        errors.push(`${client}: HTTP ${up.status}`);
-        await up.body?.cancel().catch(() => {});
-        continue; // sıradaki client'ı dene
-      }
+      const entry = await withTimeout(resolveAudio(id, client, fmt), 20_000, `${client} çözümleme`);
+      const { up, reader, first } = await openUpstream(entry, client, range, ac.signal);
 
       res.status(up.status);
       for (const name of ['content-type', 'content-length', 'content-range']) {
@@ -298,12 +323,23 @@ app.get('/stream/:id', auth, async (req, res) => {
       res.set('accept-ranges', 'bytes');
       res.set('cache-control', 'private, no-store');
 
-      const body = Readable.fromWeb(up.body);
-      body.on('error', () => res.destroy());
-      body.pipe(res);
+      res.write(first);
+      try {
+        for (;;) {
+          const { done, value } = await withTimeout(reader.read(), 20_000, 'akış');
+          if (done) break;
+          if (!res.write(value)) await new Promise((r) => { res.once('drain', r); res.once('close', r); });
+          if (ac.signal.aborted) break;
+        }
+        res.end();
+      } catch {
+        reader.cancel().catch(() => {});
+        res.destroy();
+      }
       return;
     } catch (e) {
       if (ac.signal.aborted) return;
+      urlCache.delete(cacheKey(id, client, fmt));
       errors.push(`${client}: ${e?.message ?? e}`);
     }
   }
@@ -314,28 +350,47 @@ app.get('/stream/:id', auth, async (req, res) => {
 
 // ---------- Teşhis ----------
 // Render IP'sinin YouTube tarafından engellenip engellenmediğini burada göreceksin.
+// Client'lar paralel denenir, her biri süre sınırlıdır; toplam ~30 sn'yi geçmez.
 app.get('/api/diag', auth, h(async (req, res) => {
   const id = isVideoId(req.query.id) ? req.query.id : 'dQw4w9WgXcQ';
-  const results = [];
-  for (const client of CLIENTS) {
+  const started = Date.now();
+
+  let sessionError = null;
+  try {
+    await withTimeout(getYT(), 25_000, 'YouTube oturumu');
+  } catch (e) {
+    sessionError = e?.message ?? String(e);
+  }
+
+  const results = await Promise.all(CLIENTS.map(async (client) => {
+    const t0 = Date.now();
     const r = { client };
     try {
-      const e = await resolveAudio(id, client, 'mp4');
+      const yt = await withTimeout(getYT(), 25_000, 'oturum');
+      const info = await withTimeout(yt.getBasicInfo(id, { client }), 15_000, 'player isteği');
+      const ps = info.playability_status;
+      r.playability = ps ? `${ps.status}${ps.reason ? ': ' + ps.reason : ''}` : 'bilinmiyor';
+      r.formats = (info.streaming_data?.adaptive_formats?.length ?? 0) + (info.streaming_data?.formats?.length ?? 0);
+      const e = await withTimeout(resolveAudio(id, client, 'mp4'), 20_000, 'çözümleme');
       r.mime = e.mime;
-      const up = await fetch(e.url, { headers: upstreamHeaders(client, 'bytes=0-1'), redirect: 'follow' });
+      const { up, reader } = await openUpstream(e, client, 'bytes=0-1', null);
       r.status = up.status;
-      await up.body?.cancel().catch(() => {});
-      if (!up.ok) urlCache.delete(cacheKey(id, client, 'mp4'));
+      await reader.cancel().catch(() => {});
     } catch (e) {
       r.error = e?.message ?? String(e);
+      urlCache.delete(cacheKey(id, client, 'mp4'));
     }
-    results.push(r);
-  }
+    r.ms = Date.now() - t0;
+    return r;
+  }));
+
   res.json({
     node: process.version,
     hasCookie: !!process.env.YT_COOKIE,
     hasPoToken: !!process.env.PO_TOKEN,
     hasVisitorData: !!process.env.VISITOR_DATA,
+    sessionError,
+    totalMs: Date.now() - started,
     results
   });
 }));

@@ -343,12 +343,16 @@ function viewSettings(el) {
     out.replaceChildren(h('div', { class: 'dim' }, 'Test ediliyor… (ilk seferde 1 dakikayı bulabilir)'));
     try {
       const r = await api('/api/diag');
-      const ok = r.results.some((x) => x.status === 200 || x.status === 206);
+      const good = (x) => x.status === 200 || x.status === 206;
+      const ok = r.results.some(good);
+      const line = (x) => h('div', { class: 'dim', style: 'margin-top:10px;white-space:pre-wrap;-webkit-user-select:text;user-select:text' },
+        `${good(x) ? '✓' : '✗'} ${x.client} (${x.ms} ms)\n  player: ${x.playability ?? '—'}${x.formats != null ? ' • ' + x.formats + ' format' : ''}\n  ${x.status ? 'akış: HTTP ' + x.status : 'hata: ' + (x.error ?? '?')}`);
       out.replaceChildren(
-        h('div', { style: 'font-weight:700;margin-bottom:8px' }, ok ? '✓ Ses akışı çalışıyor' : '✗ Hiçbir client çalışmıyor (YouTube IP’yi engelliyor olabilir)'),
-        ...r.results.map((x) => h('div', { class: 'dim' }, `${x.status === 200 || x.status === 206 ? '✓' : '✗'} ${x.client}: ${x.status ?? x.error}`)),
-        h('div', { class: 'dim', style: 'margin-top:8px' }, `cookie: ${r.hasCookie ? 'var' : 'yok'} • po_token: ${r.hasPoToken ? 'var' : 'yok'} • ${r.node}`));
-    } catch (e) { out.replaceChildren(h('div', null, '✗ ' + e.message)); }
+        h('div', { style: 'font-weight:700;margin-bottom:4px' }, ok ? '✓ Ses akışı çalışıyor' : '✗ Hiçbir client çalışmıyor'),
+        r.sessionError ? h('div', { class: 'dim', style: 'white-space:pre-wrap' }, 'YouTube oturumu: ' + r.sessionError) : '',
+        ...r.results.map(line),
+        h('div', { class: 'dim', style: 'margin-top:10px' }, `cookie: ${r.hasCookie ? 'var' : 'yok'} • po_token: ${r.hasPoToken ? 'var' : 'yok'} • ${r.node} • ${Math.round(r.totalMs / 1000)} sn`));
+    } catch (e) { out.replaceChildren(h('div', { style: 'white-space:pre-wrap' }, '✗ Test isteği başarısız: ' + e.message + (/HTTP 5\d\d|Zaman/.test(e.message) ? '\n(Render isteği zaman aşımıyla kesmiş olabilir; sunucu loglarına bak.)' : ''))); }
   } }, 'Bağlantıyı test et');
 
   const resetBtn = h('button', { class: 'btn', onclick: async () => {
@@ -360,6 +364,9 @@ function viewSettings(el) {
     S.favs = []; S.hist = []; save('mf_favs', []); save('mf_hist', []); toast('Temizlendi');
   } }, 'Favori/geçmişi temizle');
 
+  const le = load('mf_err', null);
+  if (le) el.append(h('h2', null, 'Son ses hatası'), h('div', { class: 'dim', style: 'white-space:pre-wrap;-webkit-user-select:text;user-select:text;font-size:13px' },
+    `${new Date(le.at).toLocaleTimeString('tr-TR')} • ${le.title}\n${le.detail}`));
   el.append(h('label', { class: 'dim', style: 'display:block;margin:12px 0 6px;font-size:13px' }, 'API anahtarı (sunucuda API_KEY tanımlıysa gerekir)'), key,
     h('label', { class: 'dim', style: 'display:block;margin:12px 0 6px;font-size:13px' }, 'Sunucu adresi (isteğe bağlı)'), base,
     h('div', { class: 'actions', style: 'justify-content:flex-start;flex-wrap:wrap' }, saveBtn, diagBtn, resetBtn, clearBtn), out,
@@ -401,6 +408,7 @@ function markPlaying() {
 }
 
 // ============================================================ oynatıcı
+const recordError = (title, detail) => save('mf_err', { title, detail, at: Date.now() });
 const cur = () => S.queue[S.idx];
 const shuffled = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const persistQueue = () => save('mf_q', { queue: S.queue.slice(0, 200), idx: Math.min(S.idx, 199) });
@@ -426,6 +434,13 @@ function playIndex(i, opts = {}) {
   if (S.trail.length > 100) S.trail.shift();
   S.idx = i; S.retried = false; S.buffering = true;
   audio.src = streamUrl(t.id);
+  clearTimeout(S.stall);
+  S.stall = setTimeout(() => {
+    if (cur()?.id === t.id && audio.readyState < 3 && !audio.paused) {
+      toast('Ses 30 sn’dir gelmedi. Ayarlar → “Bağlantıyı test et”', 8000);
+      recordError(t.title, '30 sn içinde ses verisi gelmedi');
+    }
+  }, 30000);
   if (opts.seek) audio.addEventListener('loadedmetadata', () => { try { audio.currentTime = opts.seek; } catch { /* */ } }, { once: true });
   const p = audio.play();
   if (p && p.catch) p.catch((e) => { S.buffering = false; if (e.name !== 'AbortError') toast('Çalmak için ▶ düğmesine dokun'); updatePlayUI(); });
@@ -489,7 +504,7 @@ async function extendIfNeeded() {
 // --- ses olayları
 audio.addEventListener('ended', () => next(true));
 audio.addEventListener('waiting', () => { S.buffering = true; updatePlayUI(); });
-audio.addEventListener('playing', () => { S.buffering = false; updatePlayUI(); });
+audio.addEventListener('playing', () => { S.buffering = false; clearTimeout(S.stall); updatePlayUI(); });
 audio.addEventListener('canplay', () => { S.buffering = false; updatePlayUI(); });
 audio.addEventListener('play', updatePlayUI);
 audio.addEventListener('pause', updatePlayUI);
@@ -508,7 +523,8 @@ audio.addEventListener('error', async () => {
     const r = await fetch(streamUrl(t.id), { headers: { Range: 'bytes=0-1' } });
     if (!r.ok) { const j = await r.json().catch(() => ({})); detail = (j.details || [j.error]).filter(Boolean).join(' | '); }
   } catch (e) { detail = e.message; }
-  toast(`Çalınamadı: ${t.title}${detail ? ' — ' + detail.slice(0, 120) : ''}`, 6000);
+  recordError(t.title, detail || 'bilinmeyen hata');
+  toast(`Çalınamadı: ${t.title}${detail ? ' — ' + detail.slice(0, 160) : ''}`, 8000);
   if (nextIndex(true) >= 0 && S.queue.length > 1) setTimeout(() => next(true), 1200);
 });
 

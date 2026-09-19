@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "main": "server.js",
-  "engines": { "node": ">=20" },
+  "engines": { "node": ">=20.3" },
   "scripts": { "start": "node server.js" },
   "dependencies": {
     "express": "^5.1.0",
