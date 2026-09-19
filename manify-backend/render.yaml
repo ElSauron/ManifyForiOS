@@ -9,8 +9,9 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22
-      - key: API_KEY
-        generateValue: true   # Render rastgele üretir; Dashboard > Environment'tan oku
+      # İsteğe bağlı: API_KEY tanımlarsan her istek anahtar ister; tanımlamazsan anahtarsız çalışır.
+      # - key: API_KEY
+      #   sync: false
       # İsteğe bağlı (IP engeli olursa lazım olur):
       # - key: YT_COOKIE
       #   sync: false

@@ -5,25 +5,25 @@ Arama/gezinme JSON döner, ses `/stream/:id` üzerinden proxy'lenir.
 
 ## iPhone'a kurulum (PWA)
 1. Safari'de servis adresini aç (örn. https://manifybackend.onrender.com).
-2. Ayarlar sekmesine `API_KEY` değerini yapıştır → Kaydet → "Bağlantıyı test et".
+2. Ayarlar sekmesinde "Bağlantıyı test et"e bas. (`API_KEY` tanımlıysa önce anahtarı yazıp Kaydet.)
 3. Paylaş → Ana Ekrana Ekle. Uygulamayı oradan aç (tam ekran, kilit ekranı kontrolleri).
 
 
 ## Render'a kurulum
 1. Dosyaları bir GitHub reposuna at (node_modules'u commit'leme; .gitignore'a `node_modules` yaz).
 2. Render > New > Blueprint > repoyu seç (render.yaml her şeyi ayarlar). Ya da Web Service: Build `npm install`, Start `npm start`.
-3. Environment'ta `API_KEY` var (Blueprint rastgele üretir). Değerini kopyala, PWA'da lazım olacak.
+3. `API_KEY` isteğe bağlı: Environment'ta tanımlarsan her istek anahtar ister, tanımlamazsan (veya silersen) anahtarsız çalışır.
 
 ## İlk test (en önemlisi)
 ```
-curl -H "x-api-key: ANAHTAR" https://SERVIS.onrender.com/api/diag
+curl "https://SERVIS.onrender.com/api/diag"   # API_KEY tanımlıysa sonuna ?key=ANAHTAR ekle
 ```
 `results` içinde en az bir client için `"status": 206` (veya 200) görmelisin. Hepsi 403 / "Sign in to confirm you're not a bot" ise Render IP'si engelli demektir:
 - `YT_COOKIE` (tarayıcıdan music.youtube.com çerezleri) ekle, ve/veya
 - `PO_TOKEN` + `VISITOR_DATA` ekle (birbiriyle eşleşmeli), ve/veya
 - `PLAYER_CLIENTS` sırasını değiştir (örn. `IOS,ANDROID_VR,TV_EMBEDDED`).
 
-## Endpoint'ler (hepsi `x-api-key` header'ı veya `?key=` ister)
+## Endpoint'ler (API_KEY tanımlıysa `?key=` veya `x-api-key` header'ı ister)
 | Yol | Açıklama |
 |---|---|
 | `GET /api/search?q=&type=all,song,video,album,artist,playlist&pages=1-4` | Arama |

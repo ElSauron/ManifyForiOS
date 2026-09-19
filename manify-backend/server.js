@@ -1,5 +1,5 @@
 // Manify backend — youtubei.js (InnerTube) üzerinden arama/gezinme + ses proxy'si.
-// Sadece kişisel kullanım için. Her istek API_KEY ister.
+// Sadece kişisel kullanım için. API_KEY env'i tanımlıysa her istek ister, tanımlı değilse anahtarsız çalışır.
 
 import express from 'express';
 import crypto from 'node:crypto';
@@ -20,9 +20,10 @@ const CLIENTS = (process.env.PLAYER_CLIENTS || 'ANDROID_VR,IOS,TV_EMBEDDED,WEB_E
   .filter(Boolean);
 const SESSION_MAX_AGE = 5 * 60 * 60 * 1000; // player script'i yenilemek için 5 saatte bir oturumu tazele
 
-if (API_KEY.length < 16) {
-  console.error('API_KEY ortam değişkeni zorunlu (en az 16 karakter). Render > Environment kısmından ekle.');
-  process.exit(1);
+if (!API_KEY.trim()) {
+  console.warn('API_KEY tanımlı değil: servis anahtarsız çalışıyor (URL\'yi bilen herkes kullanabilir).');
+} else if (API_KEY.trim().length < 8) {
+  console.warn('API_KEY çok kısa; tahmin edilmesi kolay olabilir.');
 }
 
 // ---------- InnerTube oturumu ----------
@@ -60,11 +61,12 @@ app.use((req, res, next) => {
 });
 
 const sha = (v) => crypto.createHash('sha256').update(String(v)).digest();
-const keyHash = sha(API_KEY);
+const keyHash = API_KEY.trim() ? sha(API_KEY.trim()) : null; // null = anahtar kontrolü kapalı
 
 // <audio src> header gönderemediği için anahtar ?key= ile de kabul edilir.
 function auth(req, res, next) {
-  const given = req.get('x-api-key') || req.query.key || '';
+  if (!keyHash) return next();
+  const given = String(req.get('x-api-key') || req.query.key || '').trim();
   if (crypto.timingSafeEqual(sha(given), keyHash)) return next();
   res.status(401).json({ error: 'Geçersiz API anahtarı' });
 }

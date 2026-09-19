@@ -85,9 +85,9 @@ async function api(path, params) {
   const kill = setTimeout(() => ctl.abort(), 90000);
   const slow = setTimeout(() => toast('Sunucu uyanıyor olabilir, biraz sürebilir…', 6000), 7000);
   try {
-    const r = await fetch(apiUrl(path, params), { headers: { 'x-api-key': S.key }, signal: ctl.signal });
+    const r = await fetch(apiUrl(path, { ...params, key: S.key }), { signal: ctl.signal });
     const j = await r.json().catch(() => ({}));
-    if (r.status === 401) { setTab('settings'); throw new Error('API anahtarı hatalı'); }
+    if (r.status === 401) { setTab('settings'); throw new Error('API anahtarı hatalı veya eksik'); }
     if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
     return j;
   } catch (e) {
@@ -326,8 +326,7 @@ async function viewDetail(el, d) {
 // --- Ayarlar
 function viewSettings(el) {
   el.append(h('h1', null, 'Ayarlar'));
-  if (!S.key) el.append(h('div', { class: 'desc', style: 'display:block' }, 'Başlamak için Render’daki API_KEY değerini gir ve kaydet.'));
-  const key = h('input', { type: 'password', placeholder: 'API anahtarı', autocomplete: 'off', autocapitalize: 'off' });
+  const key = h('input', { type: 'password', placeholder: 'Boş bırakabilirsin', autocomplete: 'off', autocapitalize: 'off' });
   key.value = S.key;
   const base = h('input', { type: 'url', placeholder: 'Boş bırak: bu siteyi kullanır', autocomplete: 'off', autocapitalize: 'off' });
   base.value = S.base;
@@ -361,7 +360,7 @@ function viewSettings(el) {
     S.favs = []; S.hist = []; save('mf_favs', []); save('mf_hist', []); toast('Temizlendi');
   } }, 'Favori/geçmişi temizle');
 
-  el.append(h('label', { class: 'dim', style: 'display:block;margin:12px 0 6px;font-size:13px' }, 'API anahtarı'), key,
+  el.append(h('label', { class: 'dim', style: 'display:block;margin:12px 0 6px;font-size:13px' }, 'API anahtarı (sunucuda API_KEY tanımlıysa gerekir)'), key,
     h('label', { class: 'dim', style: 'display:block;margin:12px 0 6px;font-size:13px' }, 'Sunucu adresi (isteğe bağlı)'), base,
     h('div', { class: 'actions', style: 'justify-content:flex-start;flex-wrap:wrap' }, saveBtn, diagBtn, resetBtn, clearBtn), out,
     h('div', { class: 'dim', style: 'margin-top:26px;font-size:13px' }, 'iPhone’da yüklemek için: Safari → Paylaş → Ana Ekrana Ekle. Sadece kişisel kullanım içindir.'));
@@ -706,7 +705,6 @@ function restore() {
 
 updateModeUI();
 restore();
-if (!S.key) S.tab = 'settings';
 render();
 fetch((S.base || '') + '/health', { cache: 'no-store' }).catch(() => {}); // Render uyku modundan uyandır
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
