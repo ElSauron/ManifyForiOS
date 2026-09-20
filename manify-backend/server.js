@@ -306,29 +306,55 @@ async function openUpstream(entry, client, range, outerSignal) {
 // Herkese açık örnekler paylaşımlı altyapıdır: dengesiz olabilir ve nazik kullanılmalı (kişisel, az istek).
 const PIPED_ON = process.env.PIPED_FALLBACK !== 'off';
 const PIPED_LIST_URL = process.env.PIPED_LIST_URL || 'https://piped-instances.kavin.rocks/';
+const PIPED_DOC_URL = 'https://raw.githubusercontent.com/TeamPiped/documentation/main/content/docs/public-instances/index.md';
 const PIPED_STATIC = (process.env.PIPED_INSTANCES || '').split(',').map((x) => x.trim().replace(/\/+$/, '')).filter(Boolean);
-const PIPED_TRIES = Number(process.env.PIPED_TRIES) || 3;
+const PIPED_TRIES = Number(process.env.PIPED_TRIES) || 4; // aynı anda kaç örneğe sorulsun
+// Piped'in resmi dokümanındaki liste (canlı liste alınamazsa bu kullanılır)
+const PIPED_BUILTIN = [
+  'https://pipedapi.leptons.xyz', 'https://pipedapi.nosebs.ru', 'https://piped-api.privacy.com.de',
+  'https://pipedapi.adminforge.de', 'https://api.piped.yt', 'https://pipedapi.drgns.space',
+  'https://pipedapi.owo.si', 'https://pipedapi.ducks.party', 'https://piped-api.codespace.cz',
+  'https://pipedapi.reallyaweso.me', 'https://api.piped.private.coffee', 'https://pipedapi.darkness.services',
+  'https://pipedapi.orangenet.cc', 'https://pipedapi-libre.kavin.rocks', 'https://pipedapi.kavin.rocks'
+];
 let pipedList = { at: 0, list: [] };
 let pipedRR = 0;
+const pipedBad = new Map(); // api -> bu zamana kadar atla
+const PIPED_BAD_MS = 15 * 60_000;
+const markBad = (api) => pipedBad.set(api, Date.now() + PIPED_BAD_MS);
+// Örneğin kendisi bozuksa (ağ/5xx/429/403) askıya al; "video yok" gibi içerik hatalarında alma.
+const isInstanceFault = (msg) => /HTTP (5\d\d|429|403|408)|zaman|cevap gelmedi|takıldı|fetch failed|ECONN|ENOTFOUND|certificate|timeout|abort/i.test(String(msg));
 
 async function pipedInstances() {
   if (PIPED_STATIC.length) return PIPED_STATIC;
   if (pipedList.list.length && Date.now() - pipedList.at < 30 * 60_000) return pipedList.list;
-  try {
-    const r = await fetch(PIPED_LIST_URL, { headers: { 'user-agent': BROWSER_UA }, signal: AbortSignal.timeout(8000) });
+  const found = [];
+  const fetchText = async (url) => {
+    const r = await fetch(url, { headers: { 'user-agent': BROWSER_UA }, signal: AbortSignal.timeout(8000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const j = await r.json();
-    const list = (Array.isArray(j) ? j : [])
+    return r;
+  };
+  try { // 1) canlı liste (uptime bilgisiyle)
+    const j = await (await fetchText(PIPED_LIST_URL)).json();
+    found.push(...(Array.isArray(j) ? j : [])
       .filter((i) => i?.api_url && Number(i.uptime_24h ?? 100) >= 70)
       .sort((x, y) => Number(y.uptime_24h ?? 0) - Number(x.uptime_24h ?? 0))
-      .slice(0, 12)
-      .map((i) => String(i.api_url).replace(/\/+$/, ''));
-    pipedList = { at: Date.now(), list };
-  } catch (e) {
-    console.error('[piped list]', e?.message ?? e);
-    pipedList = { at: Date.now() - 25 * 60_000, list: pipedList.list.length ? pipedList.list : ['https://pipedapi.kavin.rocks'] };
-  }
-  return pipedList.list;
+      .map((i) => String(i.api_url)));
+  } catch (e) { console.error('[piped canlı liste]', e?.message ?? e); }
+  try { // 2) resmi dokümandaki tablo
+    const md = await (await fetchText(PIPED_DOC_URL)).text();
+    for (const line of md.split('\n')) {
+      const cell = (line.split('|')[1] || '').trim();
+      if (/^https?:\/\/[^\s!]+$/.test(cell)) found.push(cell);
+    }
+  } catch (e) { console.error('[piped doküman listesi]', e?.message ?? e); }
+  found.push(...PIPED_BUILTIN); // 3) yerleşik liste
+  const uniq = [...new Set(found.map((u) => u.replace(/\/+$/, '')))];
+  // resmi kavin.rocks örnekleri sık kapalı oluyor; sona at
+  const list = [...uniq.filter((u) => !/kavin\.rocks/.test(u)), ...uniq.filter((u) => /kavin\.rocks/.test(u))];
+  pipedList = { at: Date.now(), list };
+  console.log(`[piped] ${list.length} örnek`);
+  return list;
 }
 
 const pipedEntries = new Map();
@@ -415,25 +441,39 @@ app.get('/stream/:id', auth, async (req, res) => {
     errors.push(`YouTube doğrudan: ${Math.ceil((directBlockedUntil - Date.now()) / 60000)} dk askıda (son denemeler başarısız)`);
   }
 
-  // 2) Yedek: herkese açık Piped örnekleri
+  // 2) Yedek: herkese açık Piped örnekleri (birkaçına aynı anda sor, ilk çalışanı kullan)
   if (PIPED_ON) {
-    const list = await pipedInstances();
-    const n = Math.min(PIPED_TRIES, list.length);
-    for (let k = 0; k < n; k++) {
+    const all = await pipedInstances();
+    const now = Date.now();
+    const usable = all.filter((api) => (pipedBad.get(api) || 0) < now);
+    const start = usable.length ? pipedRR % usable.length : 0;
+    const ordered = [...usable.slice(start), ...usable.slice(0, start)].slice(0, PIPED_TRIES);
+    const pending = new Map();
+    for (const api of ordered) {
+      pending.set(api, resolvePiped(id, api, fmt).then((entry) => ({ api, entry }), (error) => ({ api, error })));
+    }
+    while (pending.size) {
       if (ac.signal.aborted) return;
-      const api = list[(pipedRR + k) % list.length];
-      const host = new URL(api).host;
+      const r = await Promise.race(pending.values());
+      pending.delete(r.api);
+      const host = new URL(r.api).host;
+      if (r.error) {
+        const msg = r.error?.message ?? String(r.error);
+        if (isInstanceFault(msg)) markBad(r.api);
+        errors.push(`Piped ${host}: ${msg}`);
+        continue;
+      }
       try {
-        await attempt('PIPED', () => resolvePiped(id, api, fmt));
-        pipedRR = (pipedRR + k) % list.length; // çalışan örnekle devam
+        await attempt('PIPED', async () => r.entry);
+        pipedRR++;
         return;
       } catch (e) {
         if (ac.signal.aborted) return;
-        pipedEntries.delete(`${id}:${api}:${fmt}`);
-        errors.push(`Piped ${host}: ${e?.message ?? e}`);
+        pipedEntries.delete(`${id}:${r.api}:${fmt}`);
+        markBad(r.api);
+        errors.push(`Piped ${host} (ses): ${e?.message ?? e}`);
       }
     }
-    pipedRR = (pipedRR + n) % Math.max(list.length, 1);
   }
 
   console.error(`[stream ${id}]`, errors.join(' | '));
@@ -476,10 +516,10 @@ app.get('/api/diag', auth, h(async (req, res) => {
     return r;
   }));
 
-  // Yedek kaynak: ilk birkaç Piped örneği
+  // Yedek kaynak: ilk birkaç Piped örneği (askıdakiler dahil hepsini yeniden dene)
   const piped = [];
   if (PIPED_ON) {
-    const list = (await pipedInstances()).slice(0, 4);
+    const list = (await pipedInstances()).slice(0, 8);
     await Promise.all(list.map(async (api) => {
       const t0 = Date.now();
       const r = { instance: new URL(api).host };
@@ -487,13 +527,16 @@ app.get('/api/diag', auth, h(async (req, res) => {
         const e = await withTimeout(resolvePiped(id, api, 'mp4'), 12_000, 'streams');
         const { up, reader } = await openUpstream(e, 'PIPED', 'bytes=0-1', null);
         r.status = up.status;
+        pipedBad.delete(api);
         await reader.cancel().catch(() => {});
       } catch (e) {
         r.error = e?.message ?? String(e);
+        if (isInstanceFault(r.error)) markBad(api);
       }
       r.ms = Date.now() - t0;
       piped.push(r);
     }));
+    piped.sort((x, y) => (y.status ? 1 : 0) - (x.status ? 1 : 0) || x.ms - y.ms);
   }
 
   if (results.some((x) => x.status === 200 || x.status === 206)) directBlockedUntil = 0; // doğrudan yol düzelmiş

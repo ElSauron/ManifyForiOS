@@ -25,7 +25,8 @@ curl "https://SERVIS.onrender.com/api/diag"   # API_KEY tanımlıysa sonuna ?key
 
 ## Yedek kaynak (Piped)
 YouTube doğrudan engelliyse (`/player` → 403) `/stream` otomatik olarak herkese açık Piped API örneklerinden ses adresi alır; ses onların proxy'sinden gelir. Ücretsizdir ama paylaşımlı altyapıdır: örnekler bazen kapanır/yavaşlar, bu yüzden kişisel ve az kullan. Doğrudan yol art arda başarısız olursa 10 dk askıya alınır (her şarkıda boşuna beklemeyelim diye).
-Ortam değişkenleri: `PIPED_FALLBACK=off` (kapat), `PIPED_INSTANCES=https://a,https://b` (kendi listen), `PIPED_TRIES=3`, `DIRECT=off` (doğrudan YouTube'u hiç deneme).
+Örnek listesi sırayla şuradan alınır: canlı liste (piped-instances.kavin.rocks) → Piped'in resmi doküman tablosu (GitHub) → koddaki yerleşik liste. Her istekte `PIPED_TRIES` (4) örneğe aynı anda sorulur, ilk çalışan kullanılır; bozuk çıkanlar 15 dk atlanır.
+Ortam değişkenleri: `PIPED_FALLBACK=off` (kapat), `PIPED_INSTANCES=https://a,https://b` (kendi listen), `PIPED_TRIES=4`, `DIRECT=off` (doğrudan YouTube'u hiç deneme).
 
 ## IP engeli olursa
 Render gibi datacenter IP'leri YouTube tarafından sık sık engellenir (`LOGIN_REQUIRED: Sign in to confirm you're not a bot`). Çözümler:

@@ -349,8 +349,8 @@ function viewSettings(el) {
       const style = 'margin-top:10px;white-space:pre-wrap;-webkit-user-select:text;user-select:text';
       const line = (x) => h('div', { class: 'dim', style },
         `${good(x) ? '✓' : '✗'} ${x.client} (${x.ms} ms)\n  player: ${x.playability ?? '—'}${x.formats != null ? ' • ' + x.formats + ' format' : ''}\n  ${x.status ? 'akış: HTTP ' + x.status : 'hata: ' + (x.error ?? '?')}`);
-      const pline = (x) => h('div', { class: 'dim', style },
-        `${good(x) ? '✓' : '✗'} Piped ${x.instance} (${x.ms} ms)\n  ${x.status ? 'akış: HTTP ' + x.status : 'hata: ' + (x.error ?? '?')}`);
+      const pline = (x) => h('div', { class: 'dim', style: 'margin-top:4px;font-size:13px;white-space:pre-wrap' },
+        `${good(x) ? '✓' : '✗'} Piped ${x.instance}: ${x.status ? 'HTTP ' + x.status : (x.error ?? '?')} (${x.ms} ms)`);
       const head = direct ? '✓ Ses akışı çalışıyor (YouTube doğrudan)'
         : viaPiped ? '✓ Ses akışı yedek kaynaktan (Piped) çalışıyor — YouTube doğrudan engelli'
         : '✗ Hiçbir kaynak çalışmıyor';
