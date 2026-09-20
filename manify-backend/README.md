@@ -23,6 +23,10 @@ curl "https://SERVIS.onrender.com/api/diag"   # API_KEY tanımlıysa sonuna ?key
 - `PO_TOKEN` + `VISITOR_DATA` ekle (birbiriyle eşleşmeli), ve/veya
 - `PLAYER_CLIENTS` sırasını değiştir (örn. `IOS,ANDROID_VR,TV_EMBEDDED`).
 
+## Yedek kaynak (Piped)
+YouTube doğrudan engelliyse (`/player` → 403) `/stream` otomatik olarak herkese açık Piped API örneklerinden ses adresi alır; ses onların proxy'sinden gelir. Ücretsizdir ama paylaşımlı altyapıdır: örnekler bazen kapanır/yavaşlar, bu yüzden kişisel ve az kullan. Doğrudan yol art arda başarısız olursa 10 dk askıya alınır (her şarkıda boşuna beklemeyelim diye).
+Ortam değişkenleri: `PIPED_FALLBACK=off` (kapat), `PIPED_INSTANCES=https://a,https://b` (kendi listen), `PIPED_TRIES=3`, `DIRECT=off` (doğrudan YouTube'u hiç deneme).
+
 ## IP engeli olursa
 Render gibi datacenter IP'leri YouTube tarafından sık sık engellenir (`LOGIN_REQUIRED: Sign in to confirm you're not a bot`). Çözümler:
 - Aynı klasörü evdeki bir Raspberry Pi / bilgisayarda çalıştır (`npm install && node server.js`) ve `cloudflared tunnel --url http://localhost:3000` ile dışarı aç. Ev IP'si genelde engellenmez. (Hızlı tünel adresi her başlatmada değişir; kalıcı adres için Cloudflare'de adlandırılmış tünel gerekir.)

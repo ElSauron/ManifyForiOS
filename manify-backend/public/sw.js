@@ -1,5 +1,5 @@
 // Sadece uygulama kabuğunu önbelleğe alır. /api ve /stream her zaman ağdan gider.
-const CACHE = 'manify-shell-v3';
+const CACHE = 'manify-shell-v4';
 const SHELL = ['/', '/index.html', '/style.css', '/app.js', '/manifest.webmanifest',
   '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'];
 

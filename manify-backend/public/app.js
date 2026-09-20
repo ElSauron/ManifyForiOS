@@ -344,13 +344,21 @@ function viewSettings(el) {
     try {
       const r = await api('/api/diag');
       const good = (x) => x.status === 200 || x.status === 206;
-      const ok = r.results.some(good);
-      const line = (x) => h('div', { class: 'dim', style: 'margin-top:10px;white-space:pre-wrap;-webkit-user-select:text;user-select:text' },
+      const direct = r.results.some(good);
+      const viaPiped = (r.piped || []).some(good);
+      const style = 'margin-top:10px;white-space:pre-wrap;-webkit-user-select:text;user-select:text';
+      const line = (x) => h('div', { class: 'dim', style },
         `${good(x) ? '✓' : '✗'} ${x.client} (${x.ms} ms)\n  player: ${x.playability ?? '—'}${x.formats != null ? ' • ' + x.formats + ' format' : ''}\n  ${x.status ? 'akış: HTTP ' + x.status : 'hata: ' + (x.error ?? '?')}`);
+      const pline = (x) => h('div', { class: 'dim', style },
+        `${good(x) ? '✓' : '✗'} Piped ${x.instance} (${x.ms} ms)\n  ${x.status ? 'akış: HTTP ' + x.status : 'hata: ' + (x.error ?? '?')}`);
+      const head = direct ? '✓ Ses akışı çalışıyor (YouTube doğrudan)'
+        : viaPiped ? '✓ Ses akışı yedek kaynaktan (Piped) çalışıyor — YouTube doğrudan engelli'
+        : '✗ Hiçbir kaynak çalışmıyor';
       out.replaceChildren(
-        h('div', { style: 'font-weight:700;margin-bottom:4px' }, ok ? '✓ Ses akışı çalışıyor' : '✗ Hiçbir client çalışmıyor'),
+        h('div', { style: 'font-weight:700;margin-bottom:4px' }, head),
         r.sessionError ? h('div', { class: 'dim', style: 'white-space:pre-wrap' }, 'YouTube oturumu: ' + r.sessionError) : '',
         ...r.results.map(line),
+        ...(r.piped || []).map(pline),
         h('div', { class: 'dim', style: 'margin-top:10px' }, `cookie: ${r.hasCookie ? 'var' : 'yok'} • po_token: ${r.hasPoToken ? 'var' : 'yok'} • ${r.node} • ${Math.round(r.totalMs / 1000)} sn`));
     } catch (e) { out.replaceChildren(h('div', { style: 'white-space:pre-wrap' }, '✗ Test isteği başarısız: ' + e.message + (/HTTP 5\d\d|Zaman/.test(e.message) ? '\n(Render isteği zaman aşımıyla kesmiş olabilir; sunucu loglarına bak.)' : ''))); }
   } }, 'Bağlantıyı test et');

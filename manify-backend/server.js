@@ -264,7 +264,9 @@ const BROWSER_UA =
 function upstreamHeaders(client, range) {
   const headers = { accept: '*/*', range: range || 'bytes=0-' };
   const ua = Constants.CLIENTS?.[client]?.USER_AGENT;
-  if (ua) {
+  if (String(client).startsWith('PIPED')) {
+    headers['user-agent'] = BROWSER_UA;
+  } else if (ua) {
     headers['user-agent'] = ua;
   } else {
     headers['user-agent'] = BROWSER_UA;
@@ -298,6 +300,61 @@ async function openUpstream(entry, client, range, outerSignal) {
   }
 }
 
+// ---------- Yedek kaynak: herkese açık Piped örnekleri ----------
+// YouTube, datacenter IP'lerinden (Render dahil) gelen /player isteklerini engelliyorsa, başkalarının
+// işlettiği Piped API'lerinden ses adresi alınır (ses onların proxy'sinden gelir, bize IP kilidi yok).
+// Herkese açık örnekler paylaşımlı altyapıdır: dengesiz olabilir ve nazik kullanılmalı (kişisel, az istek).
+const PIPED_ON = process.env.PIPED_FALLBACK !== 'off';
+const PIPED_LIST_URL = process.env.PIPED_LIST_URL || 'https://piped-instances.kavin.rocks/';
+const PIPED_STATIC = (process.env.PIPED_INSTANCES || '').split(',').map((x) => x.trim().replace(/\/+$/, '')).filter(Boolean);
+const PIPED_TRIES = Number(process.env.PIPED_TRIES) || 3;
+let pipedList = { at: 0, list: [] };
+let pipedRR = 0;
+
+async function pipedInstances() {
+  if (PIPED_STATIC.length) return PIPED_STATIC;
+  if (pipedList.list.length && Date.now() - pipedList.at < 30 * 60_000) return pipedList.list;
+  try {
+    const r = await fetch(PIPED_LIST_URL, { headers: { 'user-agent': BROWSER_UA }, signal: AbortSignal.timeout(8000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    const list = (Array.isArray(j) ? j : [])
+      .filter((i) => i?.api_url && Number(i.uptime_24h ?? 100) >= 70)
+      .sort((x, y) => Number(y.uptime_24h ?? 0) - Number(x.uptime_24h ?? 0))
+      .slice(0, 12)
+      .map((i) => String(i.api_url).replace(/\/+$/, ''));
+    pipedList = { at: Date.now(), list };
+  } catch (e) {
+    console.error('[piped list]', e?.message ?? e);
+    pipedList = { at: Date.now() - 25 * 60_000, list: pipedList.list.length ? pipedList.list : ['https://pipedapi.kavin.rocks'] };
+  }
+  return pipedList.list;
+}
+
+const pipedEntries = new Map();
+async function resolvePiped(id, api, fmt) {
+  const key = `${id}:${api}:${fmt}`;
+  const hit = pipedEntries.get(key);
+  if (hit && hit.exp > Date.now()) return hit;
+  const r = await fetch(`${api}/streams/${id}`, { headers: { 'user-agent': BROWSER_UA }, signal: AbortSignal.timeout(10_000) });
+  if (!r.ok) throw new Error(`streams HTTP ${r.status}`);
+  const j = await r.json();
+  if (j?.error) throw new Error(String(j.message || j.error).slice(0, 120));
+  let audios = (j.audioStreams || []).filter((a) => a?.url && !a.videoOnly);
+  if (fmt === 'mp4') audios = audios.filter((a) => /mp4|m4a/i.test(`${a.mimeType} ${a.format}`));
+  if (!audios.length) throw new Error('uygun ses akışı yok');
+  audios.sort((x, y) => (y.bitrate || 0) - (x.bitrate || 0));
+  const entry = { url: audios[0].url, mime: fmt === 'mp4' ? 'audio/mp4' : (String(audios[0].mimeType || 'audio/mp4').split(';')[0]), exp: Date.now() + 20 * 60_000 };
+  pipedEntries.set(key, entry);
+  if (pipedEntries.size > 300) pipedEntries.delete(pipedEntries.keys().next().value);
+  return entry;
+}
+
+// Doğrudan YouTube client'ları hep aynı sebeple (403/bot) düşüyorsa her şarkıda 30 sn boşa beklemeyelim.
+const DIRECT_ON = process.env.DIRECT !== 'off';
+const DIRECT_COOLDOWN = 10 * 60_000;
+let directBlockedUntil = 0;
+
 app.get('/stream/:id', auth, async (req, res) => {
   const id = req.params.id;
   if (!isVideoId(id)) return res.status(400).json({ error: 'Geçersiz videoId' });
@@ -308,44 +365,79 @@ app.get('/stream/:id', auth, async (req, res) => {
   const ac = new AbortController();
   res.on('close', () => ac.abort()); // kullanıcı şarkıyı geçince upstream'i kes
 
-  for (const client of CLIENTS) {
-    if (ac.signal.aborted) return;
-    try {
-      const entry = await withTimeout(resolveAudio(id, client, fmt), 20_000, `${client} çözümleme`);
-      const { up, reader, first } = await openUpstream(entry, client, range, ac.signal);
+  // Bir kaynaktan akışı dene; başarılıysa true (yanıt gönderildi), değilse hata fırlatır.
+  async function attempt(headerClient, getEntry) {
+    const entry = await getEntry();
+    const { up, reader, first } = await openUpstream(entry, headerClient, range, ac.signal);
 
-      res.status(up.status);
-      for (const name of ['content-type', 'content-length', 'content-range']) {
-        const v = up.headers.get(name);
-        if (v) res.set(name, v);
-      }
-      if (!res.get('content-type')) res.set('content-type', entry.mime);
-      res.set('accept-ranges', 'bytes');
-      res.set('cache-control', 'private, no-store');
-
-      res.write(first);
-      try {
-        for (;;) {
-          const { done, value } = await withTimeout(reader.read(), 20_000, 'akış');
-          if (done) break;
-          if (!res.write(value)) await new Promise((r) => { res.once('drain', r); res.once('close', r); });
-          if (ac.signal.aborted) break;
-        }
-        res.end();
-      } catch {
-        reader.cancel().catch(() => {});
-        res.destroy();
-      }
-      return;
-    } catch (e) {
-      if (ac.signal.aborted) return;
-      urlCache.delete(cacheKey(id, client, fmt));
-      errors.push(`${client}: ${e?.message ?? e}`);
+    res.status(up.status);
+    for (const name of ['content-type', 'content-length', 'content-range']) {
+      const v = up.headers.get(name);
+      if (v) res.set(name, v);
     }
+    if (!res.get('content-type')) res.set('content-type', entry.mime);
+    res.set('accept-ranges', 'bytes');
+    res.set('cache-control', 'private, no-store');
+
+    res.write(first);
+    try {
+      for (;;) {
+        const { done, value } = await withTimeout(reader.read(), 20_000, 'akış');
+        if (done) break;
+        if (!res.write(value)) await new Promise((r) => { res.once('drain', r); res.once('close', r); });
+        if (ac.signal.aborted) break;
+      }
+      res.end();
+    } catch {
+      reader.cancel().catch(() => {});
+      res.destroy();
+    }
+    return true;
+  }
+
+  // 1) Doğrudan YouTube (InnerTube)
+  if (DIRECT_ON && Date.now() >= directBlockedUntil) {
+    const direct = [];
+    for (const client of CLIENTS) {
+      if (ac.signal.aborted) return;
+      try {
+        await attempt(client, () => withTimeout(resolveAudio(id, client, fmt), 20_000, `${client} çözümleme`));
+        return;
+      } catch (e) {
+        if (ac.signal.aborted) return;
+        urlCache.delete(cacheKey(id, client, fmt));
+        direct.push(`${client}: ${e?.message ?? e}`);
+      }
+    }
+    errors.push(...direct);
+    if (PIPED_ON) directBlockedUntil = Date.now() + DIRECT_COOLDOWN; // sadece yedek varsa doğrudan denemeyi askıya al
+  } else if (DIRECT_ON) {
+    errors.push(`YouTube doğrudan: ${Math.ceil((directBlockedUntil - Date.now()) / 60000)} dk askıda (son denemeler başarısız)`);
+  }
+
+  // 2) Yedek: herkese açık Piped örnekleri
+  if (PIPED_ON) {
+    const list = await pipedInstances();
+    const n = Math.min(PIPED_TRIES, list.length);
+    for (let k = 0; k < n; k++) {
+      if (ac.signal.aborted) return;
+      const api = list[(pipedRR + k) % list.length];
+      const host = new URL(api).host;
+      try {
+        await attempt('PIPED', () => resolvePiped(id, api, fmt));
+        pipedRR = (pipedRR + k) % list.length; // çalışan örnekle devam
+        return;
+      } catch (e) {
+        if (ac.signal.aborted) return;
+        pipedEntries.delete(`${id}:${api}:${fmt}`);
+        errors.push(`Piped ${host}: ${e?.message ?? e}`);
+      }
+    }
+    pipedRR = (pipedRR + n) % Math.max(list.length, 1);
   }
 
   console.error(`[stream ${id}]`, errors.join(' | '));
-  res.status(502).json({ error: 'Hiçbir client ile akış alınamadı', details: errors });
+  res.status(502).json({ error: 'Hiçbir kaynaktan akış alınamadı', details: errors });
 });
 
 // ---------- Teşhis ----------
@@ -384,8 +476,31 @@ app.get('/api/diag', auth, h(async (req, res) => {
     return r;
   }));
 
+  // Yedek kaynak: ilk birkaç Piped örneği
+  const piped = [];
+  if (PIPED_ON) {
+    const list = (await pipedInstances()).slice(0, 4);
+    await Promise.all(list.map(async (api) => {
+      const t0 = Date.now();
+      const r = { instance: new URL(api).host };
+      try {
+        const e = await withTimeout(resolvePiped(id, api, 'mp4'), 12_000, 'streams');
+        const { up, reader } = await openUpstream(e, 'PIPED', 'bytes=0-1', null);
+        r.status = up.status;
+        await reader.cancel().catch(() => {});
+      } catch (e) {
+        r.error = e?.message ?? String(e);
+      }
+      r.ms = Date.now() - t0;
+      piped.push(r);
+    }));
+  }
+
+  if (results.some((x) => x.status === 200 || x.status === 206)) directBlockedUntil = 0; // doğrudan yol düzelmiş
   res.json({
     node: process.version,
+    piped,
+    directBlocked: directBlockedUntil > Date.now(),
     hasCookie: !!process.env.YT_COOKIE,
     hasPoToken: !!process.env.PO_TOKEN,
     hasVisitorData: !!process.env.VISITOR_DATA,
