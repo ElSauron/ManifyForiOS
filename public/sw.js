@@ -1,5 +1,5 @@
 // Sadece uygulama kabuğunu önbelleğe alır. /api ve /stream her zaman ağdan gider.
-const CACHE = 'manify-shell-v5';
+const CACHE = 'manify-shell-v6';
 const SHELL = ['/', '/index.html', '/style.css', '/app.js', '/manifest.webmanifest',
   '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'];
 
@@ -19,7 +19,7 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== location.origin) return;
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/stream/') || url.pathname === '/health') return;
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/stream/') || url.pathname === '/health' || url.pathname.endsWith('.user.js')) return;
 
   // stale-while-revalidate
   e.respondWith(

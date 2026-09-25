@@ -23,10 +23,12 @@ curl "https://SERVIS.onrender.com/api/diag"   # API_KEY tanımlıysa sonuna ?key
 - `PO_TOKEN` + `VISITOR_DATA` ekle (birbiriyle eşleşmeli), ve/veya
 - `PLAYER_CLIENTS` sırasını değiştir (örn. `IOS,ANDROID_VR,TV_EMBEDDED`).
 
-## Yedek kaynak (Piped)
-YouTube doğrudan engelliyse (`/player` → 403) `/stream` otomatik olarak herkese açık Piped API örneklerinden ses adresi alır; ses onların proxy'sinden gelir. Ücretsizdir ama paylaşımlı altyapıdır: örnekler bazen kapanır/yavaşlar, bu yüzden kişisel ve az kullan. Doğrudan yol art arda başarısız olursa 10 dk askıya alınır (her şarkıda boşuna beklemeyelim diye).
-Örnek listesi sırayla şuradan alınır: canlı liste (piped-instances.kavin.rocks) → Piped'in resmi doküman tablosu (GitHub) → koddaki yerleşik liste. Her istekte `PIPED_TRIES` (4) örneğe aynı anda sorulur, ilk çalışan kullanılır; bozuk çıkanlar 15 dk atlanır.
-Ortam değişkenleri: `PIPED_FALLBACK=off` (kapat), `PIPED_INSTANCES=https://a,https://b` (kendi listen), `PIPED_TRIES=4`, `DIRECT=off` (doğrudan YouTube'u hiç deneme).
+## Telefon köprüsü (sunucu IP'si engelliyken)
+YouTube, Render gibi datacenter IP'lerinden gelen `/player` isteklerini reddediyor (403). Metrolist gibi istekleri **telefonun kendi IP'sinden** atmak için:
+1. App Store'dan **Userscripts** (ücretsiz, açık kaynak Safari eklentisi) kur; Ayarlar → Safari → Uzantılar → Userscripts → Açık, "Tüm web sitelerine" izin ver.
+2. Uygulamayı **Safari'de** aç (Ana ekran uygulamasında Safari eklentileri çalışmaz), Ayarlar sekmesinde "Köprü betiğini yükle"ye dokun → aA → Userscripts → Install. Sayfayı yenile.
+3. Ayarlar → "Telefondan test et". Bir client ✓ ise şarkılar doğrudan telefonun IP'sinden çözülür ve sunucu ses akışına hiç karışmaz (sunucu sadece arama/gezinme yapar).
+Köprü betiği (`bridge.user.js`) sadece Manify sayfasında çalışır ve yalnızca `www.youtube.com` / `youtubei.googleapis.com` adreslerine istek atabilir. Köprü yoksa ya da başarısız olursa uygulama sunucu yoluna (`/stream`) düşer.
 
 ## IP engeli olursa
 Render gibi datacenter IP'leri YouTube tarafından sık sık engellenir (`LOGIN_REQUIRED: Sign in to confirm you're not a bot`). Çözümler:

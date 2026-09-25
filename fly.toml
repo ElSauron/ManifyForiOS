@@ -1,0 +1,18 @@
+app = "manify-ozkan"          # fly launch sırasında adı değişebilir/değiştirebilirsin
+primary_region = "fra"        # Frankfurt; istersen "ams", "cdg" vb. dene
+
+[build]
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"   # boşta kalınca kapanır, saat/ücret biriktirmesin
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+[env]
+  NODE_VERSION = "22"
