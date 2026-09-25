@@ -23,8 +23,8 @@ curl "https://SERVIS.onrender.com/api/diag"   # API_KEY tanımlıysa sonuna ?key
 - `PO_TOKEN` + `VISITOR_DATA` ekle (birbiriyle eşleşmeli), ve/veya
 - `PLAYER_CLIENTS` sırasını değiştir (örn. `IOS,ANDROID_VR,TV_EMBEDDED`).
 
-## Zeabur'a kurulum (tamamen web, terminal gerekmez)
-Kart istemeyen, tarayıcıdan GitHub'ı bağlayıp deploy eden ücretsiz bir platform. Render'dan farklı bir IP havuzu kullanır, o yüzden YouTube engeli orada olmayabilir — garanti değil ama denemesi bedava.
+## Zeabur'a kurulum (2. sırada dene — deploy sırasında "choose a provider/region" ekranında ücretsiz plana ait bölge net görünmeyebiliyor, o yüzden önce yukarıdaki Deno Deploy'u dene)
+Kart istemeyen, tarayıcıdan GitHub'ı bağlayıp deploy eden bir platform. Render'dan farklı bir IP havuzu kullanır.
 
 1. https://zeabur.com adresine git, **Sign in with GitHub** ile gir (kart istemez).
 2. Dashboard'da **Create Project** → **Add Service** → **Deploy Your Source Code**.
@@ -35,7 +35,19 @@ Kart istemeyen, tarayıcıdan GitHub'ı bağlayıp deploy eden ücretsiz bir pla
 
 Ücretsiz planda servis bir süre boş kalınca uyur, ilk istekte birkaç saniye gecikme olur (Render'daki uyku gibi). Kart istemiyor; sadece kullanım çok artarsa yükseltme öneriyor, zorunlu değil.
 
-## Telefon köprüsü (sunucu IP'si engelliyken)
+## Deno Deploy'a kurulum (tamamen web, terminal gerekmez, kartsız, bölge seçimi yok)
+Zeabur'ın bölge/sağlayıcı seçim ekranı ücretli çıkabiliyor; Deno Deploy'da böyle bir adım yok — deploy otomatik olarak global edge ağında çalışır, kart istemez. Aynı backend'in Deno'ya uyarlanmış hali `main.js` (mantık `server.js` ile birebir aynı, sadece `express` ve `youtubei.js` paketleri `npm:` önekiyle içe aktarılıyor).
+
+1. https://console.deno.com adresine git, GitHub ile giriş yap (kart istemez).
+2. **New App** (veya **+ New**) → GitHub reposunu bağla, izin ver, **ElSauron/ManifyForiOS**'u seç.
+3. Kurulum adımında **Entry point** olarak `main.js` seç (framework sorarsa "None"/"Express" — hangisi çıkarsa).
+4. Deploy'a bas. Sana `https://....deno.net` gibi bir adres verecek.
+5. iPhone'da Manify → Ayarlar → Sunucu adresi'ne bu adresi yaz → Kaydet → **Sunucuyu test et**.
+
+Ücretsiz planda uygulama ~20-30 saniye boşta kalınca kapanıyor, sonraki istekte hızlıca (isolate tabanlı, konteynerden hızlı) uyanıyor. Aylık 1M istek / 10 saat aktif CPU sınırı var, kişisel kullanım için fazlasıyla yeterli.
+**Not:** Bu port'u gerçek Deno Deploy üzerinde deneme imkânım olmadı (bu ortamdan erişemiyorum). Deploy loglarında hata çıkarsa tam metnini buraya yapıştır, hemen düzeltirim.
+
+## Telefon köprüsü (KULLANILMIYOR — başka bir uygulama/eklenti kurmayı gerektirdiği için devre dışı; kod repoda duruyor ama önerilmiyor)
 YouTube, Render gibi datacenter IP'lerinden gelen `/player` isteklerini reddediyor (403). Metrolist gibi istekleri **telefonun kendi IP'sinden** atmak için:
 1. App Store'dan **Userscripts** (ücretsiz, açık kaynak Safari eklentisi) kur; Ayarlar → Safari → Uzantılar → Userscripts → Açık, "Tüm web sitelerine" izin ver.
 2. Uygulamayı **Safari'de** aç (Ana ekran uygulamasında Safari eklentileri çalışmaz), Ayarlar sekmesinde "Köprü betiğini yükle"ye dokun → aA → Userscripts → Install. Sayfayı yenile.
