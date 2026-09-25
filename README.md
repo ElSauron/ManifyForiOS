@@ -9,7 +9,7 @@ Arama/gezinme JSON döner, ses `/stream/:id` üzerinden proxy'lenir.
 3. Paylaş → Ana Ekrana Ekle. Uygulamayı oradan aç (tam ekran, kilit ekranı kontrolleri).
 
 
-## Render'a kurulum
+## Render'a kurulum (`fly.toml`/`Dockerfile` de repoda var ama Fly.io artık kart istiyor, bu yüzden aşağıdaki Zeabur önerilir)
 1. Dosyaları bir GitHub reposuna at (node_modules'u commit'leme; .gitignore'a `node_modules` yaz).
 2. Render > New > Blueprint > repoyu seç (render.yaml her şeyi ayarlar). Ya da Web Service: Build `npm install`, Start `npm start`.
 3. `API_KEY` isteğe bağlı: Environment'ta tanımlarsan her istek anahtar ister, tanımlamazsan (veya silersen) anahtarsız çalışır.
@@ -22,6 +22,18 @@ curl "https://SERVIS.onrender.com/api/diag"   # API_KEY tanımlıysa sonuna ?key
 - `YT_COOKIE` (tarayıcıdan music.youtube.com çerezleri) ekle, ve/veya
 - `PO_TOKEN` + `VISITOR_DATA` ekle (birbiriyle eşleşmeli), ve/veya
 - `PLAYER_CLIENTS` sırasını değiştir (örn. `IOS,ANDROID_VR,TV_EMBEDDED`).
+
+## Zeabur'a kurulum (tamamen web, terminal gerekmez)
+Kart istemeyen, tarayıcıdan GitHub'ı bağlayıp deploy eden ücretsiz bir platform. Render'dan farklı bir IP havuzu kullanır, o yüzden YouTube engeli orada olmayabilir — garanti değil ama denemesi bedava.
+
+1. https://zeabur.com adresine git, **Sign in with GitHub** ile gir (kart istemez).
+2. Dashboard'da **Create Project** → **Add Service** → **Deploy Your Source Code**.
+3. GitHub hesabını bağla (izin ister), listeden **ElSauron/ManifyForiOS** reposunu seç, **Import**'a bas.
+4. Zeabur repodaki `Dockerfile`'ı otomatik algılar ve build eder. Bir şey değiştirmene gerek yok.
+5. Servise tıkla → **Networking** sekmesi → **Generate Domain**. Sana `https://....zeabur.app` gibi bir adres verir.
+6. iPhone'daki Manify'ı aç → Ayarlar → **Sunucu adresi**'ne bu adresi yaz → Kaydet → **Sunucuyu test et**.
+
+Ücretsiz planda servis bir süre boş kalınca uyur, ilk istekte birkaç saniye gecikme olur (Render'daki uyku gibi). Kart istemiyor; sadece kullanım çok artarsa yükseltme öneriyor, zorunlu değil.
 
 ## Telefon köprüsü (sunucu IP'si engelliyken)
 YouTube, Render gibi datacenter IP'lerinden gelen `/player` isteklerini reddediyor (403). Metrolist gibi istekleri **telefonun kendi IP'sinden** atmak için:
