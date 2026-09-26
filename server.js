@@ -240,9 +240,18 @@ async function resolveAudio(id, client, fmt) {
   if (hit && hit.exp > Date.now()) return hit;
 
   const yt = await getYT();
-  const info = await yt.getBasicInfo(id, { client });
-  const ps = info.playability_status;
-  if (ps && ps.status !== 'OK') throw new Error(`${ps.status}${ps.reason ? ': ' + ps.reason : ''}`);
+  let info;
+  // LOGIN_REQUIRED / bot kontrolü genelde geçici (istek bazlı) davranıyor; kısa aralıklarla
+  // birkaç kez daha dene. Video gerçekten kısıtlıysa (age/region vb.) hepsi aynı hatayı verir.
+  const attempts = 3;
+  for (let i = 0; i < attempts; i++) {
+    info = await yt.getBasicInfo(id, { client });
+    const ps = info.playability_status;
+    if (!ps || ps.status === 'OK') break;
+    const transient = /LOGIN_REQUIRED|bot|UNPLAYABLE/i.test(`${ps.status} ${ps.reason || ''}`);
+    if (!transient || i === attempts - 1) throw new Error(`${ps.status}${ps.reason ? ': ' + ps.reason : ''}`);
+    await new Promise((r) => setTimeout(r, 250 + Math.random() * 400 + i * 300));
+  }
 
   const opts = { type: 'audio', quality: 'best' };
   if (fmt === 'mp4') opts.format = 'mp4'; // iOS Safari AAC/mp4 ister, webm/opus çalmaz
