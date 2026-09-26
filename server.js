@@ -4,7 +4,6 @@
 import express from 'express';
 import crypto from 'node:crypto';
 import { Readable } from 'node:stream';
-import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Innertube, UniversalCache, Constants } from 'youtubei.js';
@@ -84,13 +83,6 @@ const h = (fn) => async (req, res) => {
 const isVideoId = (v) => /^[\w-]{11}$/.test(v ?? '');
 
 // ---------- Herkese açık ----------
-// Telefon köprüsü (Safari + Userscripts): @match adresi isteğin geldiği siteye göre üretilir.
-const bridgeTpl = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'bridge.user.js'), 'utf8');
-app.get('/manify-bridge.user.js', (req, res) => {
-  const origin = `${req.protocol}://${req.get('host')}`;
-  res.set({ 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache' })
-    .send(bridgeTpl.replaceAll('__ORIGIN__', origin));
-});
 // PWA (public/ klasörü) aynı sunucudan yayınlanır: CORS yok, tek adres. İçinde gizli bir şey yok;
 // API anahtarını sen uygulamadaki Ayarlar'a girersin, o da sadece telefonunda (localStorage) durur.
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');

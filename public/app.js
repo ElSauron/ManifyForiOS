@@ -69,9 +69,7 @@ const S = {
   queue: [], idx: -1, trail: [], played: new Set(),
   shuffle: load('mf_shuffle', false), repeat: load('mf_repeat', 'off'),
   seeking: false, buffering: false, retried: false, extending: false,
-  pane: null, savedPos: 0, lyr: null,
-  playSeq: 0, loading: false, srcMode: 'server', directErr: '', directBest: null,
-  direct: load('mf_direct', true)
+  pane: null, savedPos: 0, lyr: null
 };
 window.__mf = S; // hata ayıklama için
 
@@ -101,109 +99,6 @@ async function api(path, params) {
 }
 
 const streamUrl = (id, extra = {}) => apiUrl(`/stream/${id}`, { key: S.key, ...extra }).toString();
-
-// ============================================================ telefon köprüsü
-// Safari + Userscripts eklentisi kuruluysa YouTube isteklerini sunucu yerine telefonun kendi IP'sinden atarız.
-const bridge = {
-  ok: () => document.documentElement.getAttribute('data-manify-bridge') === '1',
-  pending: new Map(),
-  seq: 0,
-  call(url, { method = 'GET', headers = {}, body } = {}, timeout = 25000) {
-    return new Promise((resolve, reject) => {
-      const id = ++bridge.seq;
-      const timer = setTimeout(() => { bridge.pending.delete(id); reject(new Error('Köprü cevap vermedi')); }, timeout);
-      bridge.pending.set(id, { resolve, reject, timer });
-      window.postMessage({ manifyBridgeReq: true, id, url, method, headers, body }, location.origin);
-    });
-  }
-};
-window.addEventListener('message', (ev) => {
-  if (ev.source !== window || ev.origin !== location.origin) return;
-  const m = ev.data;
-  if (m && m.manifyBridgeReady && S.tab === 'settings' && !S.stack.length) { render(); return; }
-  if (!m || !m.manifyBridgeRes) return;
-  const p = bridge.pending.get(m.id);
-  if (!p) return;
-  clearTimeout(p.timer); bridge.pending.delete(m.id);
-  if (m.ok) p.resolve(m); else p.reject(new Error(m.error || 'köprü hatası'));
-});
-
-// youtubei.js 18'in kullandığı client kimlikleriyle aynı değerler
-const YT_CLIENTS = {
-  ANDROID_VR: {
-    name: 'ANDROID_VR', ver: '1.65.10', id: '28',
-    ua: 'com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip',
-    extra: { deviceMake: 'Oculus', deviceModel: 'Quest 3', androidSdkVersion: 32, osName: 'Android', osVersion: '12L', platform: 'MOBILE', clientFormFactor: 'SMALL_FORM_FACTOR' }
-  },
-  IOS: {
-    name: 'iOS', ver: '20.11.6', id: '5',
-    ua: 'com.google.ios.youtube/20.11.6 (iPhone10,4; U; CPU iOS 16_7_7 like Mac OS X)',
-    extra: { deviceMake: 'Apple', deviceModel: 'iPhone10,4', osName: 'iOS', osVersion: '16.7.7.20H330', platform: 'MOBILE' }
-  },
-  ANDROID: {
-    name: 'ANDROID', ver: '21.03.36', id: '3',
-    ua: 'com.google.android.youtube/21.03.36(Linux; U; Android 16; en_US; SM-S908E Build/TP1A.220624.014) gzip',
-    extra: { androidSdkVersion: 36, osName: 'Android', osVersion: '13', platform: 'MOBILE', clientFormFactor: 'SMALL_FORM_FACTOR' }
-  }
-};
-const PLAYER_URL = 'https://www.youtube.com/youtubei/v1/player?prettyPrint=false&alt=json';
-
-async function playerVia(key, videoId) {
-  const c = YT_CLIENTS[key];
-  const body = {
-    context: {
-      client: { clientName: c.name, clientVersion: c.ver, hl: 'en', gl: 'US', userAgent: c.ua, ...c.extra },
-      user: { lockedSafetyMode: false }, request: { useSsl: true }
-    },
-    videoId, contentCheckOk: true, racyCheckOk: true
-  };
-  const r = await bridge.call(PLAYER_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Youtube-Client-Name': c.id, 'X-Youtube-Client-Version': c.ver, 'User-Agent': c.ua },
-    body: JSON.stringify(body)
-  });
-  if (r.status !== 200) throw new Error(`player HTTP ${r.status}`);
-  let j;
-  try { j = JSON.parse(r.text); } catch { throw new Error('player yanıtı okunamadı'); }
-  const ps = j.playabilityStatus;
-  if (ps && ps.status !== 'OK') throw new Error(`${ps.status}${ps.reason ? ': ' + ps.reason : ''}`);
-  const all = j.streamingData?.adaptiveFormats || [];
-  const fmts = all.filter((f) => f.url && /^audio\/mp4/.test(f.mimeType || '')).sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-  if (!fmts.length) throw new Error(all.some((f) => f.signatureCipher || f.cipher) ? 'formatlar şifreli (URL yok)' : 'mp4 ses formatı yok');
-  return { url: fmts[0].url, client: key, hasN: /[?&]n=/.test(fmts[0].url) };
-}
-
-const directCache = new Map();
-async function resolveDirect(id) {
-  const hit = directCache.get(id);
-  if (hit && hit.exp > Date.now()) return hit;
-  const order = Object.keys(YT_CLIENTS);
-  if (S.directBest) order.sort((a, b) => (a === S.directBest ? -1 : b === S.directBest ? 1 : 0));
-  const errs = [];
-  for (const key of order) {
-    try {
-      const e = await playerVia(key, id);
-      const entry = { ...e, exp: Date.now() + 20 * 60_000 };
-      directCache.set(id, entry);
-      S.directBest = key;
-      return entry;
-    } catch (e) { errs.push(`${key}: ${e.message}`); }
-  }
-  throw new Error(errs.join(' | '));
-}
-
-// URL gerçekten çalınabiliyor mu? (sessiz bir <audio> ile metaveri yüklemeyi dene)
-function probeAudio(url, ms = 10000) {
-  return new Promise((resolve, reject) => {
-    const a = new Audio();
-    a.preload = 'metadata'; a.muted = true;
-    const done = (ok, msg) => { clearTimeout(timer); a.removeAttribute('src'); a.load(); ok ? resolve(true) : reject(new Error(msg)); };
-    const timer = setTimeout(() => done(false, `${ms / 1000} sn içinde yüklenmedi`), ms);
-    a.onloadedmetadata = () => done(true);
-    a.onerror = () => done(false, `ses adresi açılamadı (kod ${a.error?.code ?? '?'})`);
-    a.src = url;
-  });
-}
 
 // ============================================================ model yardımcıları
 const isPlayable = (i) => (i.kind === 'song' || i.kind === 'video') && /^[\w-]{11}$/.test(i.id || '');
@@ -434,46 +329,6 @@ function viewSettings(el) {
   const pre = 'white-space:pre-wrap;-webkit-user-select:text;user-select:text';
   el.append(h('h1', null, 'Ayarlar'));
 
-  // ---------------- Telefon köprüsü ----------------
-  const standalone = window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
-  const st = bridge.ok() ? '✓ Köprü aktif: YouTube istekleri telefonunun IP’sinden atılıyor'
-    : standalone ? '✗ Ana ekran uygulamasında köprü çalışmaz. Bu adresi Safari’de aç.'
-    : '✗ Köprü bulunamadı (kurulum adımları aşağıda)';
-  const bout = h('div', { style: 'margin-top:12px' });
-  const toggle = h('button', { class: 'btn', onclick: (e) => {
-    S.direct = !S.direct; save('mf_direct', S.direct);
-    e.currentTarget.textContent = 'Telefon yolu: ' + (S.direct ? 'Açık' : 'Kapalı');
-  } }, 'Telefon yolu: ' + (S.direct ? 'Açık' : 'Kapalı'));
-
-  const bdiag = h('button', { class: 'btn pri', onclick: async () => {
-    if (!bridge.ok()) { bout.replaceChildren(h('div', { style: pre }, '✗ Köprü yok. Önce kurulumu tamamla.')); return; }
-    directCache.clear();
-    bout.replaceChildren(h('div', { class: 'dim' }, 'Telefondan test ediliyor…'));
-    const lines = [];
-    const paint = (extra) => bout.replaceChildren(...lines, extra || '');
-    for (const key of Object.keys(YT_CLIENTS)) {
-      const t0 = Date.now();
-      let txt;
-      try {
-        const e = await playerVia(key, 'dQw4w9WgXcQ');
-        try { await probeAudio(e.url, 10000); txt = `✓ ${key}: çalınabilir${e.hasN ? ' (n parametresi var)' : ''}`; }
-        catch (pe) { txt = `✗ ${key}: adres alındı ama açılmadı — ${pe.message}${e.hasN ? ' (n parametresi var)' : ''}`; }
-      } catch (e) { txt = `✗ ${key}: ${e.message}`; }
-      lines.push(h('div', { class: 'dim', style: `margin-top:8px;${pre}` }, `${txt} (${Date.now() - t0} ms)`));
-      paint(h('div', { class: 'dim', style: 'margin-top:8px' }, '…'));
-    }
-    const okc = lines.some((l) => l.textContent.startsWith('✓'));
-    bout.replaceChildren(h('div', { style: 'font-weight:700;margin-bottom:4px' }, okc ? '✓ Telefon yolu çalışıyor' : '✗ Telefon yolu çalışmadı'), ...lines);
-  } }, 'Telefondan test et');
-
-  el.append(h('h2', null, 'Telefon köprüsü'),
-    h('div', { style: pre }, st),
-    h('div', { class: 'actions', style: 'justify-content:flex-start;flex-wrap:wrap' },
-      h('a', { class: 'btn', href: '/manify-bridge.user.js', style: 'display:inline-flex;align-items:center;text-decoration:none;color:inherit' }, 'Köprü betiğini yükle'), bdiag, toggle),
-    bout,
-    h('div', { class: 'dim', style: `margin-top:10px;font-size:13px;${pre}` },
-      '1) App Store’dan “Userscripts” (ücretsiz) uygulamasını kur.\n2) Ayarlar → Safari → Uzantılar → Userscripts: Açık yap, “Tüm web sitelerine” izin ver.\n3) Bu sayfayı Safari’de aç, “Köprü betiğini yükle”ye dokun; adres çubuğundaki aA → Userscripts → Install.\n4) Sayfayı yenile: “Köprü aktif” yazmalı. Ana ekran uygulaması yerine Safari’de kullan.'));
-
   // ---------------- Sunucu ----------------
   const key = h('input', { type: 'password', placeholder: 'Boş bırakabilirsin', autocomplete: 'off', autocapitalize: 'off' });
   key.value = S.key;
@@ -578,8 +433,7 @@ function queueInsert(t, next) {
   toast(next ? 'Sıradaki olarak eklendi' : 'Kuyruğa eklendi');
 }
 
-function setSrc(url, mode, seek) {
-  S.srcMode = mode;
+function setSrc(url, seek) {
   audio.src = url;
   if (seek) audio.addEventListener('loadedmetadata', () => { try { audio.currentTime = seek; } catch { /* */ } }, { once: true });
   const p = audio.play();
@@ -591,30 +445,15 @@ function playIndex(i, opts = {}) {
   if (!t) return;
   if (!opts.fromTrail && S.idx >= 0 && S.idx !== i && cur()) S.trail.push(S.idx);
   if (S.trail.length > 100) S.trail.shift();
-  S.idx = i; S.retried = false; S.buffering = true; S.directErr = '';
-  const seq = ++S.playSeq;
+  S.idx = i; S.retried = false; S.buffering = true;
   clearTimeout(S.stall);
   S.stall = setTimeout(() => {
     if (cur()?.id === t.id && audio.readyState < 3 && !audio.paused) {
-      toast('Ses 30 sn’dir gelmedi. Ayarlar → test düğmelerine bak', 8000);
-      recordError(t.title, S.directErr || '30 sn içinde ses verisi gelmedi');
+      toast('Ses 30 sn’dir gelmedi. Ayarlar → Sunucuyu test et', 8000);
+      recordError(t.title, '30 sn içinde ses verisi gelmedi');
     }
   }, 30000);
-  if (bridge.ok() && S.direct) {
-    S.loading = true;
-    audio.pause(); // eski şarkı dursun; yeni adres çözülürken sessiz bekle
-    resolveDirect(t.id).then((e) => {
-      if (seq !== S.playSeq) return;
-      S.loading = false; setSrc(e.url, 'direct', opts.seek);
-    }).catch((err) => {
-      if (seq !== S.playSeq) return;
-      S.loading = false; S.directErr = err.message;
-      setSrc(streamUrl(t.id), 'server', opts.seek); // köprü olmazsa sunucu yolu
-    });
-  } else {
-    S.loading = false;
-    setSrc(streamUrl(t.id), 'server', opts.seek);
-  }
+  setSrc(streamUrl(t.id), opts.seek);
   S.hist = [trackOf(t), ...S.hist.filter((x) => x.id !== t.id)].slice(0, 60);
   save('mf_hist', S.hist);
   persistQueue();
@@ -654,7 +493,7 @@ function prev() {
   audio.currentTime = 0;
 }
 function togglePlay() {
-  if (!cur() || S.loading) return;
+  if (!cur()) return;
   if (!audio.src) return playIndex(S.idx, { seek: S.savedPos });
   if (audio.paused) audio.play().catch(() => {}); else audio.pause();
 }
@@ -681,13 +520,7 @@ audio.addEventListener('play', updatePlayUI);
 audio.addEventListener('pause', updatePlayUI);
 audio.addEventListener('error', async () => {
   const t = cur();
-  if (!t || !audio.src || S.loading || audio.src.startsWith('data:')) return;
-  if (S.srcMode === 'direct') { // telefondan alınan adres açılmadı -> sunucu yoluna geç
-    directCache.delete(t.id);
-    S.directErr = 'ses adresi açılamadı (telefon yolu)';
-    setSrc(streamUrl(t.id), 'server');
-    return;
-  }
+  if (!t || !audio.src || audio.src.startsWith('data:')) return;
   if (!S.retried) { // bir kez yeniden dene (URL süresi dolmuş olabilir)
     S.retried = true;
     audio.src = streamUrl(t.id, { r: Date.now() });
@@ -700,7 +533,6 @@ audio.addEventListener('error', async () => {
     const r = await fetch(streamUrl(t.id), { headers: { Range: 'bytes=0-1' } });
     if (!r.ok) { const j = await r.json().catch(() => ({})); detail = (j.details || [j.error]).filter(Boolean).join(' | '); }
   } catch (e) { detail = e.message; }
-  if (S.directErr) detail = `Telefon yolu: ${S.directErr}${detail ? ' || Sunucu: ' + detail : ''}`;
   recordError(t.title, detail || 'bilinmeyen hata');
   toast(`Çalınamadı: ${t.title}${detail ? ' — ' + detail.slice(0, 160) : ''}`, 8000);
   if (nextIndex(true) >= 0 && S.queue.length > 1) setTimeout(() => next(true), 1200);
@@ -729,7 +561,7 @@ const dur = () => (isFinite(audio.duration) && audio.duration > 0 ? audio.durati
 
 // --- UI güncellemeleri
 function updatePlayUI() {
-  const icon = S.buffering && (!audio.paused || S.loading) ? 'loader' : audio.paused ? 'play' : 'pause';
+  const icon = S.buffering && !audio.paused ? 'loader' : audio.paused ? 'play' : 'pause';
   const spin = icon === 'loader';
   for (const b of [$('#p-play'), $('#mini-play')]) { setIcon(b, icon); b.classList.toggle('spin', spin); }
   $('#player').classList.toggle('paused', audio.paused);
@@ -885,7 +717,7 @@ function highlightLyrics(c) {
   nodes[k]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
 }
 
-// iOS: <audio> ilk kez bir dokunuşla "açılmalı"; sonra adres asenkron çözülse de (köprü) çalabilsin.
+// iOS: <audio> ilk kez bir dokunuşla "açılmalı"; sonra adres asenkron çözülse bile çalabilsin.
 const SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
 function unlockAudio() {
   if (S.unlocked) return;

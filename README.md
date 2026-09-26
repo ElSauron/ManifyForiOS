@@ -47,13 +47,6 @@ Zeabur'ın bölge/sağlayıcı seçim ekranı ücretli çıkabiliyor; Deno Deplo
 Ücretsiz planda uygulama ~20-30 saniye boşta kalınca kapanıyor, sonraki istekte hızlıca (isolate tabanlı, konteynerden hızlı) uyanıyor. Aylık 1M istek / 10 saat aktif CPU sınırı var, kişisel kullanım için fazlasıyla yeterli.
 **Not:** Bu port'u gerçek Deno Deploy üzerinde deneme imkânım olmadı (bu ortamdan erişemiyorum). Deploy loglarında hata çıkarsa tam metnini buraya yapıştır, hemen düzeltirim.
 
-## Telefon köprüsü (KULLANILMIYOR — başka bir uygulama/eklenti kurmayı gerektirdiği için devre dışı; kod repoda duruyor ama önerilmiyor)
-YouTube, Render gibi datacenter IP'lerinden gelen `/player` isteklerini reddediyor (403). Metrolist gibi istekleri **telefonun kendi IP'sinden** atmak için:
-1. App Store'dan **Userscripts** (ücretsiz, açık kaynak Safari eklentisi) kur; Ayarlar → Safari → Uzantılar → Userscripts → Açık, "Tüm web sitelerine" izin ver.
-2. Uygulamayı **Safari'de** aç (Ana ekran uygulamasında Safari eklentileri çalışmaz), Ayarlar sekmesinde "Köprü betiğini yükle"ye dokun → aA → Userscripts → Install. Sayfayı yenile.
-3. Ayarlar → "Telefondan test et". Bir client ✓ ise şarkılar doğrudan telefonun IP'sinden çözülür ve sunucu ses akışına hiç karışmaz (sunucu sadece arama/gezinme yapar).
-Köprü betiği (`bridge.user.js`) sadece Manify sayfasında çalışır ve yalnızca `www.youtube.com` / `youtubei.googleapis.com` adreslerine istek atabilir. Köprü yoksa ya da başarısız olursa uygulama sunucu yoluna (`/stream`) düşer.
-
 ## IP engeli olursa
 Render gibi datacenter IP'leri YouTube tarafından sık sık engellenir (`LOGIN_REQUIRED: Sign in to confirm you're not a bot`). Çözümler:
 - Aynı klasörü evdeki bir Raspberry Pi / bilgisayarda çalıştır (`npm install && node server.js`) ve `cloudflared tunnel --url http://localhost:3000` ile dışarı aç. Ev IP'si genelde engellenmez. (Hızlı tünel adresi her başlatmada değişir; kalıcı adres için Cloudflare'de adlandırılmış tünel gerekir.)
