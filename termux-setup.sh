@@ -6,7 +6,7 @@ DIR="$HOME/ManifyForiOS"
 
 echo "== Paketler kuruluyor =="
 pkg update -y && pkg upgrade -y
-pkg install -y nodejs-lts git wget
+pkg install -y nodejs-lts git wget curl
 
 echo "== Depo çekiliyor =="
 if [ -d "$DIR/.git" ]; then

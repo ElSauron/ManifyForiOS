@@ -11,7 +11,7 @@ sleep 1
 echo "== Sunucu başlatılıyor (arka planda, port $PORT) =="
 PORT=$PORT nohup node server.js > server.log 2>&1 &
 sleep 2
-if ! curl -s "http://localhost:$PORT/health" > /dev/null; then
+if ! wget -q -O /dev/null "http://localhost:$PORT/health"; then
   echo "Sunucu açılamadı, server.log dosyasına bak:"; tail -n 20 server.log; exit 1
 fi
 echo "Sunucu çalışıyor. Şimdi tünel açılıyor, adres birazdan aşağıda görünecek…"
