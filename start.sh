@@ -11,11 +11,14 @@ sleep 1
 echo "== Sunucu başlatılıyor (arka planda, port $PORT) =="
 PORT=$PORT nohup node server.js > server.log 2>&1 &
 sleep 2
-if ! wget -q -O /dev/null "http://localhost:$PORT/health"; then
-  echo "Sunucu açılamadı, server.log dosyasına bak:"; tail -n 20 server.log; exit 1
+if ! wget -O /dev/null "http://127.0.0.1:$PORT/health" 2>/tmp/manify-health.log; then
+  echo "Sunucu 'health' isteğine cevap vermedi. wget hatası:"
+  cat /tmp/manify-health.log
+  echo "server.log:"; tail -n 20 server.log
+  exit 1
 fi
 echo "Sunucu çalışıyor. Şimdi tünel açılıyor, adres birazdan aşağıda görünecek…"
 echo "(Bu pencereyi kapatma — Termux bildirimindeki 'Acquire wakelock'a dokunmayı unutma.)"
 echo
 
-cloudflared tunnel --url "http://localhost:$PORT"
+cloudflared tunnel --url "http://127.0.0.1:$PORT"
