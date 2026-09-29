@@ -10,11 +10,17 @@ sleep 1
 
 echo "== Sunucu başlatılıyor (arka planda, port $PORT) =="
 PORT=$PORT nohup node server.js > server.log 2>&1 &
-sleep 2
-if ! wget -O /dev/null "http://127.0.0.1:$PORT/health" 2>manify-health.log; then
-  echo "Sunucu 'health' isteğine cevap vermedi. wget hatası:"
-  cat manify-health.log
-  echo "server.log:"; tail -n 20 server.log
+
+echo -n "Sunucunun açılması bekleniyor"
+ok=""
+for i in $(seq 1 20); do
+  if wget -q -O /dev/null "http://127.0.0.1:$PORT/health" 2>/dev/null; then ok=1; break; fi
+  echo -n "."; sleep 1
+done
+echo
+if [ -z "$ok" ]; then
+  echo "Sunucu 20 sn içinde açılmadı. server.log:"
+  tail -n 30 server.log
   exit 1
 fi
 echo "Sunucu çalışıyor. Şimdi tünel açılıyor, adres birazdan aşağıda görünecek…"
