@@ -9,6 +9,25 @@ Arama/gezinme JSON döner, ses `/stream/:id` üzerinden proxy'lenir.
 3. Paylaş → Ana Ekrana Ekle. Uygulamayı oradan aç (tam ekran, kilit ekranı kontrolleri).
 
 
+## Android (Termux) ile telefon IP'sinden çalıştırma — ÖNERİLEN
+YouTube'un bot kontrolü bulut sunucu IP'lerini (Render, Deno Deploy, Zeabur, Fly.io...) hedef alıyor; ev/mobil telefon IP'leri genelde bu kontrole takılmıyor. En sağlam çözüm: backend'i boşta duran bir Android telefonda, Termux içinde çalıştırıp dışarı açmak. Telefonun sürekli açık olması gerekmez, sadece müzik dinlerken Termux açık olsun yeter.
+
+1. **F-Droid'den Termux kur** — https://f-droid.org/en/packages/com.termux/ (Play Store'daki Termux güncellenmiyor, F-Droid'dekini kullan). F-Droid uygulamasını da yoksa önce https://f-droid.org adresinden kur.
+2. Termux'u aç, aşağıdaki tek komutu yapıştırıp Enter'a bas (paketleri kurar, repoyu indirir, `npm install` çalıştırır, `cloudflared`'i indirir):
+   ```
+   curl -sL https://raw.githubusercontent.com/ElSauron/ManifyForiOS/main/termux-setup.sh | bash
+   ```
+3. Kurulum bitince başlat:
+   ```
+   cd ~/ManifyForiOS && bash start.sh
+   ```
+4. Birkaç saniye içinde ekranda `https://xxxxx.trycloudflare.com` gibi bir satır çıkacak. Bu senin herkese açık adresin.
+5. iPhone'da Manify'ı aç → Ayarlar → **Sunucu adresi**'ne bu adresi yapıştır → Kaydet → **Sunucuyu test et**.
+6. Bildirim çubuğundan Termux bildirimine dokunup **"Acquire wakelock"**'a bas (ekran kilitlenince işlem durmasın diye). İsteğe bağlı ama önerilir: Android Ayarlar → Uygulamalar → Termux → Pil → **Kısıtlama yok**.
+
+**Önemli:** Bu ücretsiz tünel (`trycloudflare.com`) hesap gerektirmez ama her `start.sh` çalıştırmasında **adres değişir**. Termux'u/telefonu kapatıp yeniden açtığında `bash start.sh` çalıştır, yeni adresi Manify'a tekrar gir.
+Durdurmak için: `bash stop.sh`. Kod güncellendiğinde: `cd ~/ManifyForiOS && git pull && npm install`.
+
 ## Render'a kurulum (`fly.toml`/`Dockerfile` de repoda var ama Fly.io artık kart istiyor, bu yüzden aşağıdaki Zeabur önerilir)
 1. Dosyaları bir GitHub reposuna at (node_modules'u commit'leme; .gitignore'a `node_modules` yaz).
 2. Render > New > Blueprint > repoyu seç (render.yaml her şeyi ayarlar). Ya da Web Service: Build `npm install`, Start `npm start`.
