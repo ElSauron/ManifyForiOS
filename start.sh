@@ -11,9 +11,9 @@ sleep 1
 echo "== Sunucu başlatılıyor (arka planda, port $PORT) =="
 PORT=$PORT nohup node server.js > server.log 2>&1 &
 sleep 2
-if ! wget -O /dev/null "http://127.0.0.1:$PORT/health" 2>/tmp/manify-health.log; then
+if ! wget -O /dev/null "http://127.0.0.1:$PORT/health" 2>manify-health.log; then
   echo "Sunucu 'health' isteğine cevap vermedi. wget hatası:"
-  cat /tmp/manify-health.log
+  cat manify-health.log
   echo "server.log:"; tail -n 20 server.log
   exit 1
 fi
